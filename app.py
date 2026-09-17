@@ -2,21 +2,59 @@ import os
 import signal
 import subprocess
 import threading
+import time
+import uuid
 from pathlib import Path
 
-from flask import Flask, redirect, render_template, request, session, url_for, flash
+from flask import (
+    Flask,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+    flash,
+)
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET", "change-me-in-render")
 
-VIDEO_DIR = Path(os.environ.get("VIDEO_DIR", "videos"))
-VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+app.secret_key = os.environ.get(
+    "FLASK_SECRET",
+    "change-me-in-render",
+)
 
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me")
-RTMP_URL = os.environ.get("KICK_RTMP_URL", "")
-STREAM_KEY = os.environ.get("KICK_STREAM_KEY", "")
-DEFAULT_VIDEO = os.environ.get("VIDEO_FILE", "")
+
+VIDEO_DIR = Path(
+    os.environ.get("VIDEO_DIR", "videos")
+)
+
+VIDEO_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+
+ADMIN_PASSWORD = os.environ.get(
+    "ADMIN_PASSWORD",
+    "change-me",
+)
+
+RTMP_URL = os.environ.get(
+    "KICK_RTMP_URL",
+    "",
+)
+
+STREAM_KEY = os.environ.get(
+    "KICK_STREAM_KEY",
+    "",
+)
+
+DEFAULT_VIDEO = os.environ.get(
+    "VIDEO_FILE",
+    "",
+)
+
 
 process = None
 process_lock = threading.Lock()
@@ -42,34 +80,103 @@ def stop_stream():
         process = None
 
 
-def start_stream(video_name):
-    global process, current_video
+def download_google_drive_video(url):
+    filename = f"drive-{uuid.uuid4().hex}.mp4"
+    output_file = VIDEO_DIR / filename
 
-    if not RTMP_URL or not STREAM_KEY:
+    result = subprocess.run(
+        [
+            "gdown",
+            "--fuzzy",
+            url,
+            "-O",
+            str(output_file),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=1800,
+    )
+
+    if (
+        result.returncode != 0
+        or not output_file.exists()
+        or output_file.stat().st_size == 0
+    ):
+        error_message = result.stderr.strip()
+
+        if not error_message:
+            error_message = (
+                "Google Drive ما قدرناش نحمّلو"
+            )
+
         raise RuntimeError(
-            "خاصك تضبط KICK_RTMP_URL و KICK_STREAM_KEY فـ Render"
+            f"فشل تحميل فيديو Google Drive: {error_message}"
         )
 
-    source = video_name.strip()
+    return output_file
 
-    is_url = source.startswith(("http://", "https://" ))
 
-    video_path = Path(source)
+def start_stream(video_source):
+    global process
+    global current_video
 
-    if not is_url:
-        if not video_path.is_absolute():
-            video_path = VIDEO_DIR / video_path
+    if not RTMP_URL:
+        raise RuntimeError(
+            "KICK_RTMP_URL ناقص فـ Render"
+        )
 
-        if not video_path.exists():
+    if not STREAM_KEY:
+        raise RuntimeError(
+            "KICK_STREAM_KEY ناقص فـ Render"
+        )
+
+    source = video_source.strip()
+
+    if not source:
+        raise RuntimeError(
+            "خاصك تحط رابط الفيديو"
+        )
+
+    is_google_drive = (
+        "drive.google.com" in source
+        or "drive.usercontent.google.com" in source
+    )
+
+    is_web_url = source.startswith(
+        (
+            "http://",
+            "https://",
+         )
+    )
+
+    if is_google_drive:
+        video_file = download_google_drive_video(source)
+        input_source = str(video_file)
+        current_video = source
+
+    elif is_web_url:
+        input_source = source
+        current_video = source
+
+    else:
+        video_file = Path(source)
+
+        if not video_file.is_absolute():
+            video_file = VIDEO_DIR / video_file
+
+        if not video_file.exists():
             raise RuntimeError(
-                f"الفيديو ما لقايناهش: {video_path}"
+                f"الفيديو ما لقايناهش: {video_file}"
             )
+
+        input_source = str(video_file)
+        current_video = video_file.name
 
     stop_stream()
 
-    output_url = f"{RTMP_URL.rstrip('/')}/{STREAM_KEY}"
-
-    input_source = source if is_url else str(video_path)
+    output_url = (
+        f"{RTMP_URL.rstrip('/')}/{STREAM_KEY}"
+    )
 
     command = [
         "ffmpeg",
@@ -119,7 +226,31 @@ def start_stream(video_name):
             stderr=subprocess.PIPE,
         )
 
-        current_video = source if is_url else video_path.name
+    time.sleep(3)
+
+    if process.poll() is not None:
+        error_output = ""
+
+        if process.stderr:
+            error_output = (
+                process.stderr.read()
+                .decode(
+                    "utf-8",
+                    errors="ignore",
+                )
+                .strip()
+            )
+
+        process = None
+
+        if error_output:
+            raise RuntimeError(
+                f"FFmpeg توقف: {error_output[-1000:]}"
+            )
+
+        raise RuntimeError(
+            "FFmpeg توقف. راجع رابط Kick ورابط الفيديو"
+        )
 
 
 def login_required():
@@ -136,6 +267,7 @@ def index():
             file.name
             for file in VIDEO_DIR.iterdir()
             if file.is_file()
+            and not file.name.startswith("drive-")
         ]
     )
 
@@ -144,29 +276,47 @@ def index():
 
         try:
             if action == "start":
-                video_url = request.form.get("video_url", "").strip()
-                selected_video = request.form.get("video", "").strip()
+                video_url = request.form.get(
+                    "video_url",
+                    "",
+                ).strip()
 
-                source = video_url or selected_video
+                selected_video = request.form.get(
+                    "video",
+                    "",
+                ).strip()
 
-                if not source:
-                    raise RuntimeError(
-                        "اختار فيديو أو حط رابط مباشر للفيديو"
-                    )
+                video_source = (
+                    video_url
+                    or selected_video
+                )
 
-                start_stream(source)
+                start_stream(video_source)
 
-                flash("البث تخدم بنجاح", "ok")
+                flash(
+                    "البث تخدم بنجاح",
+                    "ok",
+                )
 
             elif action == "stop":
                 stop_stream()
-                flash("البث توقف", "ok")
+
+                flash(
+                    "البث توقف",
+                    "ok",
+                )
 
             else:
-                flash("أمر غير معروف", "error")
+                flash(
+                    "أمر غير معروف",
+                    "error",
+                )
 
         except Exception as error:
-            flash(str(error), "error")
+            flash(
+                str(error),
+                "error",
+            )
 
         return redirect(url_for("index"))
 
@@ -178,24 +328,41 @@ def index():
     )
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route(
+    "/login",
+    methods=["GET", "POST"],
+)
 def login():
     if request.method == "POST":
-        password = request.form.get("password", "")
+        password = request.form.get(
+            "password",
+            "",
+        )
 
         if password == ADMIN_PASSWORD:
             session["logged_in"] = True
-            return redirect(url_for("index"))
 
-        flash("كلمة السر غير صحيحة", "error")
+            return redirect(
+                url_for("index")
+            )
 
-    return render_template("login.html")
+        flash(
+            "كلمة السر غير صحيحة",
+            "error",
+        )
+
+    return render_template(
+        "login.html"
+    )
 
 
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+
+    return redirect(
+        url_for("login")
+    )
 
 
 @app.get("/health")
@@ -211,13 +378,24 @@ def shutdown(*_):
     stop_stream()
 
 
-signal.signal(signal.SIGTERM, shutdown)
-signal.signal(signal.SIGINT, shutdown)
+signal.signal(
+    signal.SIGTERM,
+    shutdown,
+)
+
+signal.signal(
+    signal.SIGINT,
+    shutdown,
+)
 
 
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", "10000")),
+        port=int(
+            os.environ.get(
+                "PORT",
+                "10000",
+            )
+        ),
     )
-
