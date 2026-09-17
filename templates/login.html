@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>الدخول</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css' ) }}"
+    >
+</head>
+
+<body>
+    <main class="card login">
+
+        <h1>دخول لوحة التحكم</h1>
+
+        <p>
+            دخل كلمة السر ديال الإدارة
+        </p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert {{ category }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endwith %}
+
+        <form method="post">
+            <input
+                type="password"
+                name="password"
+                placeholder="كلمة السر"
+                required
+                autofocus
+            >
+
+            <button class="start">
+                دخول
+            </button>
+        </form>
+
+    </main>
+</body>
+</html>
