@@ -1,0 +1,188 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: #10131a;
+    color: #f4f6fb;
+    font-family: Arial, sans-serif;
+
+    display: grid;
+    place-items: center;
+
+    padding: 20px;
+}
+
+.card {
+    width: min(680px, 100%);
+
+    background: #1b202b;
+    border: 1px solid #30394b;
+    border-radius: 18px;
+
+    padding: 30px;
+
+    box-shadow: 0 20px 60px #0006;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+}
+
+p {
+    color: #aeb8c9;
+    margin-top: 0;
+}
+
+.link {
+    color: #aeb8c9;
+    text-decoration: none;
+}
+
+.status {
+    background: #11151d;
+    border-radius: 12px;
+
+    padding: 18px;
+    margin: 24px 0;
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.status small {
+    margin-right: auto;
+    color: #aeb8c9;
+    max-width: 55%;
+    overflow-wrap: anywhere;
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.on {
+    background: #25d366;
+    box-shadow: 0 0 12px #25d366;
+}
+
+.off {
+    background: #e55353;
+}
+
+label {
+    display: block;
+    margin: 16px 0 8px;
+    color: #cbd3e1;
+}
+
+select,
+input {
+    width: 100%;
+
+    padding: 14px;
+
+    border-radius: 10px;
+    border: 1px solid #3b465a;
+
+    background: #11151d;
+    color: #fff;
+
+    font-size: 16px;
+}
+
+.buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+button {
+    border: 0;
+    border-radius: 10px;
+
+    padding: 14px 20px;
+
+    color: #fff;
+    font-weight: bold;
+    font-size: 15px;
+
+    cursor: pointer;
+    flex: 1;
+}
+
+.start {
+    background: #18864b;
+}
+
+.stop {
+    background: #a83e48;
+}
+
+.alert {
+    padding: 13px;
+    border-radius: 10px;
+    margin: 14px 0;
+}
+
+.alert.ok {
+    background: #123e2a;
+    color: #8df1ba;
+}
+
+.alert.error {
+    background: #4a2026;
+    color: #ffabb2;
+}
+
+.hint {
+    margin-top: 20px;
+    font-size: 13px;
+}
+
+.login {
+    max-width: 420px;
+}
+
+.login button {
+    width: 100%;
+    margin-top: 14px;
+}
+
+@media (max-width: 600px) {
+    .card {
+        padding: 20px;
+    }
+
+    .buttons {
+        flex-direction: column;
+    }
+
+    header {
+        align-items: flex-start;
+    }
+
+    .status {
+        flex-wrap: wrap;
+    }
+
+    .status small {
+        width: 100%;
+        max-width: 100%;
+        margin-right: 22px;
+    }
+}
