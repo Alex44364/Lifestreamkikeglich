@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Kick Stream Control</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+</head>
+
+<body>
+    <main class="card">
+
+        <header>
+            <div>
+                <h1>لوحة تحكم البث</h1>
+                <p>تحكم فاللايف بلا ما تدخل للسيرفر</p>
+            </div>
+
+            <a class="link" href="{{ url_for('logout') }}">
+                خروج
+            </a>
+        </header>
+
+        <section class="status">
+            <span class="dot {{ 'on' if running else 'off' }}"></span>
+
+            <strong>
+                {{ 'البث خدام' if running else 'البث موقف' }}
+            </strong>
+
+            <small>
+                {{ video or 'ما كاين حتى فيديو مختار' }}
+            </small>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert {{ category }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endwith %}
+
+        <form method="post" class="controls">
+
+            <label>
+                اختار فيديو من المجلد
+            </label>
+
+            <select name="video">
+                {% for item in videos %}
+                    <option
+                        value="{{ item }}"
+                        {% if item == video %}selected{% endif %}
+                    >
+                        {{ item }}
+                    </option>
+                {% else %}
+                    <option disabled>
+                        ما كاين حتى ملف فـ videos
+                    </option>
+                {% endfor %}
+            </select>
+
+            <label>
+                أو حط رابط مباشر للفيديو MP4 أو HLS
+            </label>
+
+            <input
+                name="video_url"
+                type="url"
+                placeholder="https://example.com/video.mp4"
+            >
+
+            <div class="buttons">
+                <button
+                    name="action"
+                    value="start"
+                    class="start"
+                >
+                    شغل / بدّل الفيديو
+                </button>
+
+                <button
+                    name="action"
+                    value="stop"
+                    class="stop"
+                >
+                    حبس اللايف
+                </button>
+            </div>
+        </form>
+
+        <p class="hint">
+            إلا بدلتي الفيديو، التطبيق كيحبس القديم وكيطلق الجديد أوتوماتيكياً.
+        </p>
+
+    </main>
+</body>
+</html>
