@@ -63,7 +63,10 @@ current_video = DEFAULT_VIDEO
 
 
 def is_running():
-    return process is not None and process.poll() is None
+    return (
+        process is not None
+        and process.poll() is None
+    )
 
 
 def stop_stream():
@@ -82,10 +85,6 @@ def stop_stream():
 
 
 def build_kick_url():
-    """
-    كيبني رابط Kick صحيح حتى إلا كانت شي قيمة مكتوبة بشكل ناقص.
-    """
-
     rtmp_url = RTMP_URL
     stream_key = STREAM_KEY
 
@@ -99,7 +98,7 @@ def build_kick_url():
             "KICK_STREAM_KEY ناقص فـ Render"
         )
 
-    # إذا دخل Stream Key كرابط كامل بالغلط
+    # إذا تحط Stream Key كرابط كامل بالغلط
     if stream_key.startswith(
         (
             "rtmps://",
@@ -118,7 +117,7 @@ def build_kick_url():
             f"rtmps://{parsed.netloc}/app"
         )
 
-    # تحويل https إلى rtmps
+    # تصحيح https إلى rtmps
     if rtmp_url.startswith("https://" ):
         rtmp_url = (
             "rtmps://"
@@ -133,9 +132,9 @@ def build_kick_url():
 
     rtmp_url = rtmp_url.rstrip("/")
 
-    # إضافة /app و :443 إذا ناقصين
+    # إضافة المنفذ والمسار إذا كانوا ناقصين
     if "/app" not in rtmp_url:
-        rtmp_url = rtmp_url + ":443/app"
+        rtmp_url += ":443/app"
 
     elif (
         rtmp_url.endswith("/app")
@@ -156,11 +155,6 @@ def build_kick_url():
             "KICK_RTMP_URL خاصو يبدا بـ rtmps://"
         )
 
-    if not stream_key:
-        raise RuntimeError(
-            "Stream Key خاوي"
-        )
-
     if "/" in stream_key:
         raise RuntimeError(
             "KICK_STREAM_KEY خاصو يكون المفتاح فقط، بلا رابط"
@@ -170,11 +164,10 @@ def build_kick_url():
 
 
 def download_google_drive_video(url):
-    filename = (
-        f"drive-{uuid.uuid4().hex}.mp4"
+    output_file = (
+        VIDEO_DIR
+        / f"drive-{uuid.uuid4().hex}.mp4"
     )
-
-    output_file = VIDEO_DIR / filename
 
     result = subprocess.run(
         [
@@ -260,12 +253,14 @@ def start_stream(video_source):
 
     stop_stream()
 
+    # إعدادات خفيفة لتقليل استعمال RAM وCPU
     command = [
         "ffmpeg",
 
         "-hide_banner",
         "-loglevel",
         "warning",
+        "-nostdin",
 
         "-re",
         "-stream_loop",
@@ -273,23 +268,35 @@ def start_stream(video_source):
         "-i",
         input_source,
 
+        "-vf",
+        "scale=-2:720",
+
+        "-r",
+        "30",
+
         "-c:v",
         "libx264",
 
         "-preset",
-        "veryfast",
+        "ultrafast",
+
+        "-tune",
+        "zerolatency",
+
+        "-threads",
+        "1",
 
         "-pix_fmt",
         "yuv420p",
 
         "-b:v",
-        "4500k",
+        "1800k",
 
         "-maxrate",
-        "4500k",
+        "1800k",
 
         "-bufsize",
-        "9000k",
+        "3600k",
 
         "-g",
         "60",
@@ -298,10 +305,13 @@ def start_stream(video_source):
         "aac",
 
         "-b:a",
-        "128k",
+        "96k",
 
         "-ar",
         "44100",
+
+        "-ac",
+        "2",
 
         "-f",
         "flv",
@@ -316,7 +326,7 @@ def start_stream(video_source):
             stderr=subprocess.PIPE,
         )
 
-    time.sleep(4)
+    time.sleep(5)
 
     if process.poll() is not None:
         error_output = ""
@@ -494,4 +504,4 @@ if __name__ == "__main__":
                 "10000",
             )
         ),
-)
+    )
