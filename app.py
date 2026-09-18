@@ -41,15 +41,18 @@ ADMIN_PASSWORD = os.environ.get(
     "change-me",
 )
 
+
 RTMP_URL = os.environ.get(
     "KICK_RTMP_URL",
     "",
 ).strip()
 
+
 STREAM_KEY = os.environ.get(
     "KICK_STREAM_KEY",
     "",
 ).strip()
+
 
 DEFAULT_VIDEO = os.environ.get(
     "VIDEO_FILE",
@@ -98,7 +101,7 @@ def build_kick_url():
             "KICK_STREAM_KEY ناقص فـ Render"
         )
 
-    # إذا تحط Stream Key كرابط كامل بالغلط
+    # إذا دخل Stream Key كرابط كامل بالغلط
     if stream_key.startswith(
         (
             "rtmps://",
@@ -132,9 +135,9 @@ def build_kick_url():
 
     rtmp_url = rtmp_url.rstrip("/")
 
-    # إضافة المنفذ والمسار إذا كانوا ناقصين
+    # إضافة :443/app إذا ناقصين
     if "/app" not in rtmp_url:
-        rtmp_url += ":443/app"
+        rtmp_url = rtmp_url + ":443/app"
 
     elif (
         rtmp_url.endswith("/app")
@@ -157,10 +160,12 @@ def build_kick_url():
 
     if "/" in stream_key:
         raise RuntimeError(
-            "KICK_STREAM_KEY خاصو يكون المفتاح فقط، بلا رابط"
+            "KICK_STREAM_KEY خاصو يكون المفتاح فقط بلا رابط"
         )
 
-    return f"{rtmp_url}/{stream_key}"
+    return (
+        f"{rtmp_url}/{stream_key}"
+    )
 
 
 def download_google_drive_video(url):
@@ -190,7 +195,7 @@ def download_google_drive_video(url):
         error_message = (
             result.stderr.strip()
             or result.stdout.strip()
-            or "Google Drive ما قدرناش نحمّلو"
+            or "ما قدرناش نحملو فيديو Google Drive"
         )
 
         raise RuntimeError(
@@ -253,13 +258,14 @@ def start_stream(video_source):
 
     stop_stream()
 
-    # إعدادات خفيفة لتقليل استعمال RAM وCPU
+    # إعدادات خفيفة:
+    # 480p - 24 FPS - 900 kbps - thread واحد
     command = [
         "ffmpeg",
 
         "-hide_banner",
         "-loglevel",
-        "warning",
+        "error",
         "-nostdin",
 
         "-re",
@@ -269,10 +275,10 @@ def start_stream(video_source):
         input_source,
 
         "-vf",
-        "scale=-2:720",
+        "scale=-2:480",
 
         "-r",
-        "30",
+        "24",
 
         "-c:v",
         "libx264",
@@ -286,26 +292,32 @@ def start_stream(video_source):
         "-threads",
         "1",
 
+        "-filter_threads",
+        "1",
+
+        "-filter_complex_threads",
+        "1",
+
         "-pix_fmt",
         "yuv420p",
 
         "-b:v",
-        "1800k",
+        "900k",
 
         "-maxrate",
-        "1800k",
+        "900k",
 
         "-bufsize",
-        "3600k",
+        "1800k",
 
         "-g",
-        "60",
+        "48",
 
         "-c:a",
         "aac",
 
         "-b:a",
-        "96k",
+        "64k",
 
         "-ar",
         "44100",
