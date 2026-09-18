@@ -5,15 +5,16 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import (
     Flask,
+    flash,
     redirect,
     render_template,
     request,
     session,
     url_for,
-    flash,
 )
 
 
@@ -43,12 +44,12 @@ ADMIN_PASSWORD = os.environ.get(
 RTMP_URL = os.environ.get(
     "KICK_RTMP_URL",
     "",
-)
+).strip()
 
 STREAM_KEY = os.environ.get(
     "KICK_STREAM_KEY",
     "",
-)
+).strip()
 
 DEFAULT_VIDEO = os.environ.get(
     "VIDEO_FILE",
@@ -80,8 +81,99 @@ def stop_stream():
         process = None
 
 
+def build_kick_url():
+    """
+    كيبني رابط Kick صحيح حتى إلا كانت شي قيمة مكتوبة بشكل ناقص.
+    """
+
+    rtmp_url = RTMP_URL
+    stream_key = STREAM_KEY
+
+    if not rtmp_url:
+        raise RuntimeError(
+            "KICK_RTMP_URL ناقص فـ Render"
+        )
+
+    if not stream_key:
+        raise RuntimeError(
+            "KICK_STREAM_KEY ناقص فـ Render"
+        )
+
+    # إذا دخل Stream Key كرابط كامل بالغلط
+    if stream_key.startswith(
+        (
+            "rtmps://",
+            "rtmp://",
+            "https://",
+            "http://",
+         )
+    ):
+        parsed = urlparse(stream_key)
+
+        stream_key = parsed.path.strip(
+            "/"
+        ).split("/")[-1]
+
+        rtmp_url = (
+            f"rtmps://{parsed.netloc}/app"
+        )
+
+    # تحويل https إلى rtmps
+    if rtmp_url.startswith("https://" ):
+        rtmp_url = (
+            "rtmps://"
+            + rtmp_url[len("https://" ):]
+        )
+
+    elif rtmp_url.startswith("http://" ):
+        rtmp_url = (
+            "rtmp://"
+            + rtmp_url[len("http://" ):]
+        )
+
+    rtmp_url = rtmp_url.rstrip("/")
+
+    # إضافة /app و :443 إذا ناقصين
+    if "/app" not in rtmp_url:
+        rtmp_url = rtmp_url + ":443/app"
+
+    elif (
+        rtmp_url.endswith("/app")
+        and ":443" not in rtmp_url
+    ):
+        rtmp_url = (
+            rtmp_url[:-4].rstrip("/")
+            + ":443/app"
+        )
+
+    if not rtmp_url.startswith(
+        (
+            "rtmps://",
+            "rtmp://",
+        )
+    ):
+        raise RuntimeError(
+            "KICK_RTMP_URL خاصو يبدا بـ rtmps://"
+        )
+
+    if not stream_key:
+        raise RuntimeError(
+            "Stream Key خاوي"
+        )
+
+    if "/" in stream_key:
+        raise RuntimeError(
+            "KICK_STREAM_KEY خاصو يكون المفتاح فقط، بلا رابط"
+        )
+
+    return f"{rtmp_url}/{stream_key}"
+
+
 def download_google_drive_video(url):
-    filename = f"drive-{uuid.uuid4().hex}.mp4"
+    filename = (
+        f"drive-{uuid.uuid4().hex}.mp4"
+    )
+
     output_file = VIDEO_DIR / filename
 
     result = subprocess.run(
@@ -102,15 +194,14 @@ def download_google_drive_video(url):
         or not output_file.exists()
         or output_file.stat().st_size == 0
     ):
-        error_message = result.stderr.strip()
-
-        if not error_message:
-            error_message = (
-                "Google Drive ما قدرناش نحمّلو"
-            )
+        error_message = (
+            result.stderr.strip()
+            or result.stdout.strip()
+            or "Google Drive ما قدرناش نحمّلو"
+        )
 
         raise RuntimeError(
-            f"فشل تحميل فيديو Google Drive: {error_message}"
+            f"فشل تحميل الفيديو: {error_message[-500:]}"
         )
 
     return output_file
@@ -120,15 +211,7 @@ def start_stream(video_source):
     global process
     global current_video
 
-    if not RTMP_URL:
-        raise RuntimeError(
-            "KICK_RTMP_URL ناقص فـ Render"
-        )
-
-    if not STREAM_KEY:
-        raise RuntimeError(
-            "KICK_STREAM_KEY ناقص فـ Render"
-        )
+    output_url = build_kick_url()
 
     source = video_source.strip()
 
@@ -150,8 +233,11 @@ def start_stream(video_source):
     )
 
     if is_google_drive:
-        video_file = download_google_drive_video(source)
-        input_source = str(video_file)
+        downloaded_file = (
+            download_google_drive_video(source)
+        )
+
+        input_source = str(downloaded_file)
         current_video = source
 
     elif is_web_url:
@@ -174,12 +260,9 @@ def start_stream(video_source):
 
     stop_stream()
 
-    output_url = (
-        f"{RTMP_URL.rstrip('/')}/{STREAM_KEY}"
-    )
-
     command = [
         "ffmpeg",
+
         "-hide_banner",
         "-loglevel",
         "warning",
@@ -192,15 +275,19 @@ def start_stream(video_source):
 
         "-c:v",
         "libx264",
+
         "-preset",
         "veryfast",
+
         "-pix_fmt",
         "yuv420p",
 
         "-b:v",
         "4500k",
+
         "-maxrate",
         "4500k",
+
         "-bufsize",
         "9000k",
 
@@ -209,13 +296,16 @@ def start_stream(video_source):
 
         "-c:a",
         "aac",
+
         "-b:a",
         "128k",
+
         "-ar",
         "44100",
 
         "-f",
         "flv",
+
         output_url,
     ]
 
@@ -226,7 +316,7 @@ def start_stream(video_source):
             stderr=subprocess.PIPE,
         )
 
-    time.sleep(3)
+    time.sleep(4)
 
     if process.poll() is not None:
         error_output = ""
@@ -243,24 +333,26 @@ def start_stream(video_source):
 
         process = None
 
-        if error_output:
-            raise RuntimeError(
-                f"FFmpeg توقف: {error_output[-1000:]}"
-            )
-
         raise RuntimeError(
-            "FFmpeg توقف. راجع رابط Kick ورابط الفيديو"
+            f"FFmpeg توقف: {error_output[-1200:]}"
         )
 
 
 def login_required():
-    return session.get("logged_in") is True
+    return session.get(
+        "logged_in"
+    ) is True
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route(
+    "/",
+    methods=["GET", "POST"],
+)
 def index():
     if not login_required():
-        return redirect(url_for("login"))
+        return redirect(
+            url_for("login")
+        )
 
     videos = sorted(
         [
@@ -272,7 +364,9 @@ def index():
     )
 
     if request.method == "POST":
-        action = request.form.get("action")
+        action = request.form.get(
+            "action"
+        )
 
         try:
             if action == "start":
@@ -286,12 +380,12 @@ def index():
                     "",
                 ).strip()
 
-                video_source = (
+                source = (
                     video_url
                     or selected_video
                 )
 
-                start_stream(video_source)
+                start_stream(source)
 
                 flash(
                     "البث تخدم بنجاح",
@@ -318,7 +412,9 @@ def index():
                 "error",
             )
 
-        return redirect(url_for("index"))
+        return redirect(
+            url_for("index")
+        )
 
     return render_template(
         "index.html",
@@ -398,4 +494,4 @@ if __name__ == "__main__":
                 "10000",
             )
         ),
-    )
+)
